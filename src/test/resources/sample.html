@@ -1112,6 +1112,67 @@ Muliple tags can be provided with comma seperated strings. Use tag1, tag2, tag3 
 
 
 
+## /pet/test/testingListResponse
+
+
+### GET
+
+<a id="testingListResponse">testingListResponse</a>
+
+
+
+
+
+
+#### Security
+
+
+
+
+* petstore_auth
+* write:pets
+* read:pets
+
+
+
+
+#### Request
+
+
+
+##### Parameters
+
+
+
+
+
+
+#### Response
+
+**Content-Type: ** application/xml, application/json
+
+
+| Status Code | Reason      | Response Model |
+|-------------|-------------|----------------|
+| 200    | successful operation | Array[<a href="#/definitions/Pet">Pet</a>]|
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## /pet/{petId}
 
 

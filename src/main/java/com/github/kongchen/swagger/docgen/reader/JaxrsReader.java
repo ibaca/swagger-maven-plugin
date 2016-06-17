@@ -36,6 +36,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -195,7 +196,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         String operationId = method.getName();
         String responseContainer = null;
 
-        Class<?> responseClass = null;
+        Type responseType = null;
         Map<String, Property> defaultResponseHeaders = null;
 
         if (apiOperation != null) {
@@ -222,7 +223,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
             }
 
             if (!apiOperation.response().equals(Void.class)) {
-                responseClass = apiOperation.response();
+                responseType = apiOperation.response();
             }
             if (!apiOperation.responseContainer().isEmpty()) {
                 responseContainer = apiOperation.responseContainer();
@@ -247,64 +248,35 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         }
         operation.operationId(operationId);
 
-        if (responseClass == null) {
+        if (responseType == null) {
             // pick out response from method declaration
             LOGGER.debug("picking up response class from method " + method);
-            Type t = method.getGenericReturnType();
-            responseClass = method.getReturnType();
-            if (!responseClass.equals(Void.class) && !responseClass.equals(void.class)
-                    && (AnnotationUtils.findAnnotation(responseClass, Api.class) == null)) {
-                LOGGER.debug("reading model " + responseClass);
-                Map<String, Model> models = ModelConverters.getInstance().readAll(t);
-            }
+            responseType = method.getGenericReturnType();
         }
-        if ((responseClass != null)
+
+        Class<?> responseClass = null;
+        if (responseType instanceof Class) responseClass = (Class) responseType;
+        if (responseType instanceof ParameterizedType) responseClass = (Class) ((ParameterizedType)responseType).getRawType();
+        Property responseProperty = ModelConverters.getInstance().readAsProperty(responseType);
+        boolean isVoid = !responseType.equals(Void.class) && !responseType.equals(void.class);
+
+        if (responseProperty != null && responseClass != null
                 && !responseClass.equals(Void.class)
                 && !responseClass.equals(javax.ws.rs.core.Response.class)
                 && (AnnotationUtils.findAnnotation(responseClass, Api.class) == null)) {
-            if (isPrimitive(responseClass)) {
-                Property responseProperty;
-                Property property = ModelConverters.getInstance().readAsProperty(responseClass);
-                if (property != null) {
-                    if ("list".equalsIgnoreCase(responseContainer)) {
-                        responseProperty = new ArrayProperty(property);
-                    } else if ("map".equalsIgnoreCase(responseContainer)) {
-                        responseProperty = new MapProperty(property);
-                    } else {
-                        responseProperty = property;
-                    }
+            Map<String, Model> responseModel = ModelConverters.getInstance().read(responseType);
+            assert responseModel.size() < 2 : "should contain the model or be empty";
+            if (isVoid || responseModel.isEmpty()) {
                     operation.response(apiOperation.code(), new Response()
-                            .description("successful operation")
-                            .schema(responseProperty)
-                            .headers(defaultResponseHeaders));
-                }
-            } else if (!responseClass.equals(Void.class) && !responseClass.equals(void.class)) {
-                Map<String, Model> models = ModelConverters.getInstance().read(responseClass);
-                if (models.isEmpty()) {
-                    Property p = ModelConverters.getInstance().readAsProperty(responseClass);
-                    operation.response(apiOperation.code(), new Response()
-                            .description("successful operation")
-                            .schema(p)
-                            .headers(defaultResponseHeaders));
-                }
-                for (String key : models.keySet()) {
-                    Property responseProperty;
-
-                    if ("list".equalsIgnoreCase(responseContainer)) {
-                        responseProperty = new ArrayProperty(new RefProperty().asDefault(key));
-                    } else if ("map".equalsIgnoreCase(responseContainer)) {
-                        responseProperty = new MapProperty(new RefProperty().asDefault(key));
-                    } else {
-                        responseProperty = new RefProperty().asDefault(key);
-                    }
-                    operation.response(apiOperation.code(), new Response()
-                            .description("successful operation")
-                            .schema(responseProperty)
-                            .headers(defaultResponseHeaders));
-                    swagger.model(key, models.get(key));
-                }
-                models = ModelConverters.getInstance().readAll(responseClass);
-                for (Map.Entry<String, Model> entry : models.entrySet()) {
+                            .description("successful operation").headers(defaultResponseHeaders)
+                            .schema(applyResponseContainer(responseContainer, responseProperty)));
+            } else {
+                String key = responseModel.keySet().iterator().next();
+                operation.response(apiOperation.code(), new Response()
+                        .description("successful operation").headers(defaultResponseHeaders)
+                        .schema(applyResponseContainer(responseContainer, new RefProperty().asDefault(key))));
+                swagger.model(key, responseModel.get(key));
+                for (Map.Entry<String, Model> entry : ModelConverters.getInstance().readAll(responseType).entrySet()) {
                     swagger.model(entry.getKey(), entry.getValue());
                 }
             }
@@ -365,6 +337,11 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         return operation;
     }
 
+    public Property applyResponseContainer(String responseContainer, Property property) {
+        if ("list".equalsIgnoreCase(responseContainer)) return new ArrayProperty(property);
+        else if ("map".equalsIgnoreCase(responseContainer)) return new MapProperty(property);
+        else return property;
+    }
 
     public String extractOperationMethod(ApiOperation apiOperation, Method method, Iterator<SwaggerExtension> chain) {
         if (!apiOperation.httpMethod().isEmpty()) {

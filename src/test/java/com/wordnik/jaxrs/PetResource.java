@@ -33,6 +33,7 @@ import io.swagger.annotations.AuthorizationScope;
 import io.swagger.annotations.Extension;
 import io.swagger.annotations.ExtensionProperty;
 
+import java.util.List;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -309,6 +310,13 @@ public class PetResource {
     @GET
     @Path("/test/testingArrayResponse")
     public Response testingArrayResponse() {
+        return null;
+    }
+
+    @ApiOperation(value = "testingListResponse")
+    @GET
+    @Path("/test/testingListResponse")
+    public List<Pet> testingListResponse() {
         return null;
     }
 
